@@ -2,6 +2,7 @@
 <html lang="te"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>My Songs</title>
+<link rel="manifest" href="manifest.json"><meta name="theme-color" content="#7a4fd6"><link rel="icon" href="icon-192.png"><link rel="apple-touch-icon" href="icon-192.png">
 <style>
 :root{box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px);--bg:#faf7f2;--card:#fff;--tx:#2a2622;--mut:#8a8178;--ac:#7a4fd6;--bd:#e7e0d6}
 @media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#17141a;--card:#221e27;--tx:#efeaf5;--mut:#9b93a6;--ac:#a78bfa;--bd:#352f3d}}
@@ -38,8 +39,10 @@ audio{width:100%;margin:8px 0}
   <h1 id="ft">Add song</h1>
   <input id="t" placeholder="Title">
   <div class="row"><select id="l"></select><label style="display:flex;align-items:center;gap:6px"><input type="checkbox" id="fv" style="width:auto"> ★</label></div>
+  <button onclick="pasteLy()" style="margin-bottom:8px">📋 Paste lyrics from clipboard</button>
   <textarea id="ly" placeholder="Paste lyrics here (Telugu / Tamil / etc.)"></textarea>
   <input id="yt" placeholder="YouTube link (optional)" style="margin-top:8px">
+  <input id="src" placeholder="Source page link (optional)" style="margin-top:8px">
   <div class="row"><input type="file" id="mp" accept="audio/*"></div>
   <div class="row"><button class="pri" onclick="save()">Save</button><button onclick="show('list')">Cancel</button></div>
 </div>
@@ -73,12 +76,12 @@ function render(){
 const esc=t=>String(t).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
 $("q").oninput=render;
 
-function edit(s){editId=s?s.id:null;$("ft").textContent=s?"Edit song":"Add song";$("t").value=s?s.title:"";$("l").value=s?s.lang:"Telugu";$("ly").value=s?s.lyrics:"";$("yt").value=s?s.yt:"";$("fv").checked=s?!!s.fav:false;$("mp").value="";show("form")}
+function edit(s){editId=s?s.id:null;$("ft").textContent=s?"Edit song":"Add song";$("t").value=s?s.title:"";$("l").value=s?s.lang:"Telugu";$("ly").value=s?s.lyrics:"";$("yt").value=s?s.yt:"";$("src").value=s?s.src||"":"";$("fv").checked=s?!!s.fav:false;$("mp").value="";show("form")}
 async function save(){
   const t=$("t").value.trim();if(!t)return alert("Enter a title");
   let s=songs.find(x=>x.id==editId);
   if(!s){s={id:Date.now().toString(36),mp3:false};songs.unshift(s)}
-  Object.assign(s,{title:t,lang:$("l").value,lyrics:$("ly").value,yt:$("yt").value.trim(),fav:$("fv").checked});
+  Object.assign(s,{title:t,lang:$("l").value,lyrics:$("ly").value,yt:$("yt").value.trim(),src:$("src").value.trim(),fav:$("fv").checked});
   const f=$("mp").files[0];
   if(f){await idbOp("readwrite",st=>st.put(f,s.id));s.mp3=true}
   persist();show("list");
@@ -87,6 +90,7 @@ async function open_(id){
   cur=songs.find(x=>x.id==id);$("vt").textContent=cur.title;$("vl").textContent=cur.lang;$("vly").textContent=cur.lyrics;$("vly").style.fontSize=fsz+"px";$("vf").textContent=cur.fav?"★":"☆";
   let h="";
   if(cur.yt)h+=`<a href="${esc(cur.yt)}" target="_blank" rel="noopener"><button class="pri" style="margin:6px 0">▶ Play on YouTube</button></a>`;
+  if(cur.src)h+=`<a href="${esc(cur.src)}" target="_blank" rel="noopener" style="color:var(--ac)">🔗 Source page</a>`;
   $("vp").innerHTML=h;
   if(cur.mp3){const f=await idbOp("readonly",s=>s.get(cur.id));if(f){const a=document.createElement("audio");a.controls=true;a.src=URL.createObjectURL(f);$("vp").appendChild(a)}}
   show("view");
@@ -96,5 +100,14 @@ function fs(d){fsz=Math.max(12,Math.min(40,fsz+d));$("vly").style.fontSize=fsz+"
 async function del(){if(!confirm("Delete this song?"))return;await idbOp("readwrite",s=>s.delete(cur.id));songs=songs.filter(x=>x!=cur);persist();show("list")}
 function exp(){const a=document.createElement("a");a.href=URL.createObjectURL(new Blob([JSON.stringify(songs)],{type:"application/json"}));a.download="my-songs-backup.json";a.click()}
 $("imp").onchange=async e=>{try{const d=JSON.parse(await e.target.files[0].text());d.forEach(x=>{if(!songs.some(s=>s.id==x.id)){x.mp3=false;songs.push(x)}});persist();render()}catch(err){alert("Invalid file")}};
-idb().then(render);
+async function pasteLy(){try{$("ly").value=await navigator.clipboard.readText()}catch(e){alert("Long-press the box and choose Paste")}}
+idb().then(()=>{render();
+  const p=new URLSearchParams(location.search),u=p.get("url")||"",tx=p.get("text")||"",ti=p.get("title")||"";
+  if(u||tx||ti){edit();$("t").value=ti;let link=u;
+    if(!link){const m=tx.match(/https?:\/\/\S+/);if(m)link=m[0]}
+    if(/youtu/.test(link))$("yt").value=link;else $("src").value=link;
+    const ly=tx.replace(link,"").trim();if(ly.length>40)$("ly").value=ly;
+    history.replaceState(null,"",location.pathname)}
+});
+if("serviceWorker" in navigator)navigator.serviceWorker.register("sw.js").catch(()=>{});
 </script></body></html>
