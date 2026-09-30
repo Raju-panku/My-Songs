@@ -1,0 +1,100 @@
+<!DOCTYPE html>
+<html lang="te"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>My Songs</title>
+<style>
+:root{box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px);--bg:#faf7f2;--card:#fff;--tx:#2a2622;--mut:#8a8178;--ac:#7a4fd6;--bd:#e7e0d6}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#17141a;--card:#221e27;--tx:#efeaf5;--mut:#9b93a6;--ac:#a78bfa;--bd:#352f3d}}
+:root[data-theme="dark"]{--bg:#17141a;--card:#221e27;--tx:#efeaf5;--mut:#9b93a6;--ac:#a78bfa;--bd:#352f3d}
+html{scroll-padding-top:env(safe-area-inset-top,0px)}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--tx);font-family:system-ui,"Noto Sans Telugu","Noto Sans Tamil","Noto Sans Kannada","Noto Sans Malayalam","Noto Sans Devanagari",sans-serif;padding:12px 14px 90px;max-width:640px;margin-inline:auto}
+h1{font-size:20px;margin:6px 0 10px}
+input,select,textarea,button{font:inherit;color:var(--tx);background:var(--card);border:1px solid var(--bd);border-radius:10px;padding:10px;width:100%}
+textarea{min-height:180px}
+button{width:auto;cursor:pointer}
+.pri{background:var(--ac);color:#fff;border-color:var(--ac)}
+.row{display:flex;gap:8px;margin:8px 0}
+.chips{display:flex;gap:6px;overflow-x:auto;padding:4px 0}
+.chip{white-space:nowrap;padding:6px 12px;border-radius:99px}
+.chip.on{background:var(--ac);color:#fff;border-color:var(--ac)}
+.song{background:var(--card);border:1px solid var(--bd);border-radius:12px;padding:12px;margin:8px 0;display:flex;justify-content:space-between;align-items:center;gap:8px}
+.song b{display:block}.song small{color:var(--mut)}
+.fab{position:fixed;right:18px;bottom:calc(18px + env(safe-area-inset-bottom,0px));width:56px;height:56px;border-radius:50%;font-size:28px;padding:0}
+.lyr{white-space:pre-wrap;line-height:1.8;font-size:18px;margin:14px 0}
+.hide{display:none}
+audio{width:100%;margin:8px 0}
+</style></head><body>
+<div id="list">
+  <h1>🎵 My Songs</h1>
+  <input id="q" placeholder="Search title or lyrics">
+  <div class="chips" id="chips"></div>
+  <div id="songs"></div>
+  <div class="row"><button onclick="exp()">Backup</button><button onclick="imp.click()">Restore</button><input type="file" id="imp" accept=".json" class="hide"></div>
+  <button class="fab pri" onclick="edit()">+</button>
+</div>
+
+<div id="form" class="hide">
+  <h1 id="ft">Add song</h1>
+  <input id="t" placeholder="Title">
+  <div class="row"><select id="l"></select><label style="display:flex;align-items:center;gap:6px"><input type="checkbox" id="fv" style="width:auto"> ★</label></div>
+  <textarea id="ly" placeholder="Paste lyrics here (Telugu / Tamil / etc.)"></textarea>
+  <input id="yt" placeholder="YouTube link (optional)" style="margin-top:8px">
+  <div class="row"><input type="file" id="mp" accept="audio/*"></div>
+  <div class="row"><button class="pri" onclick="save()">Save</button><button onclick="show('list')">Cancel</button></div>
+</div>
+
+<div id="view" class="hide">
+  <div class="row"><button onclick="show('list')">← Back</button><button id="vf" onclick="fav()">☆</button><button onclick="edit(cur)">Edit</button><button onclick="del()">Delete</button></div>
+  <h1 id="vt"></h1><small id="vl" style="color:var(--mut)"></small>
+  <div id="vp"></div>
+  <div class="row"><button onclick="fs(-2)">A−</button><button onclick="fs(2)">A+</button></div>
+  <div class="lyr" id="vly"></div>
+</div>
+
+<script>
+const LANGS=["Telugu","Tamil","Kannada","Malayalam","Hindi","English"];
+let songs=[],cur=null,filt="All",editId=null,db=null,fsz=18;
+try{songs=JSON.parse(localStorage.getItem("songs")||"[]")}catch(e){}
+const persist=()=>{try{localStorage.setItem("songs",JSON.stringify(songs))}catch(e){alert("Storage full")}};
+const $=id=>document.getElementById(id);
+$("l").innerHTML=LANGS.map(x=>`<option>${x}</option>`).join("");
+
+function idb(){return new Promise(r=>{try{const q=indexedDB.open("mp3s",1);q.onupgradeneeded=()=>q.result.createObjectStore("f");q.onsuccess=()=>{db=q.result;r()};q.onerror=()=>r()}catch(e){r()}})}
+function idbOp(mode,fn){return new Promise(r=>{if(!db)return r();const s=db.transaction("f",mode).objectStore("f"),q=fn(s);q.onsuccess=()=>r(q.result);q.onerror=()=>r()})}
+
+function show(v){["list","form","view"].forEach(x=>$(x).classList.toggle("hide",x!=v));if(v=="list")render();scrollTo(0,0)}
+function render(){
+  $("chips").innerHTML=["All","★",...LANGS].map(c=>`<button class="chip ${c==filt?"on":""}" onclick="filt='${c}';render()">${c}</button>`).join("");
+  const q=$("q").value.toLowerCase();
+  const r=songs.filter(s=>(filt=="All"||(filt=="★"?s.fav:s.lang==filt))&&(s.title+" "+s.lyrics).toLowerCase().includes(q));
+  $("songs").innerHTML=r.length?r.map(s=>`<div class="song" onclick="open_('${s.id}')"><div><b>${esc(s.title)}</b><small>${s.lang}${s.yt?" · ▶":""}${s.mp3?" · 🎧":""}</small></div><span>${s.fav?"★":""}</span></div>`).join(""):`<p style="color:var(--mut)">No songs yet. Tap + to add one.</p>`;
+}
+const esc=t=>String(t).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+$("q").oninput=render;
+
+function edit(s){editId=s?s.id:null;$("ft").textContent=s?"Edit song":"Add song";$("t").value=s?s.title:"";$("l").value=s?s.lang:"Telugu";$("ly").value=s?s.lyrics:"";$("yt").value=s?s.yt:"";$("fv").checked=s?!!s.fav:false;$("mp").value="";show("form")}
+async function save(){
+  const t=$("t").value.trim();if(!t)return alert("Enter a title");
+  let s=songs.find(x=>x.id==editId);
+  if(!s){s={id:Date.now().toString(36),mp3:false};songs.unshift(s)}
+  Object.assign(s,{title:t,lang:$("l").value,lyrics:$("ly").value,yt:$("yt").value.trim(),fav:$("fv").checked});
+  const f=$("mp").files[0];
+  if(f){await idbOp("readwrite",st=>st.put(f,s.id));s.mp3=true}
+  persist();show("list");
+}
+async function open_(id){
+  cur=songs.find(x=>x.id==id);$("vt").textContent=cur.title;$("vl").textContent=cur.lang;$("vly").textContent=cur.lyrics;$("vly").style.fontSize=fsz+"px";$("vf").textContent=cur.fav?"★":"☆";
+  let h="";
+  if(cur.yt)h+=`<a href="${esc(cur.yt)}" target="_blank" rel="noopener"><button class="pri" style="margin:6px 0">▶ Play on YouTube</button></a>`;
+  $("vp").innerHTML=h;
+  if(cur.mp3){const f=await idbOp("readonly",s=>s.get(cur.id));if(f){const a=document.createElement("audio");a.controls=true;a.src=URL.createObjectURL(f);$("vp").appendChild(a)}}
+  show("view");
+}
+function fav(){cur.fav=!cur.fav;$("vf").textContent=cur.fav?"★":"☆";persist()}
+function fs(d){fsz=Math.max(12,Math.min(40,fsz+d));$("vly").style.fontSize=fsz+"px"}
+async function del(){if(!confirm("Delete this song?"))return;await idbOp("readwrite",s=>s.delete(cur.id));songs=songs.filter(x=>x!=cur);persist();show("list")}
+function exp(){const a=document.createElement("a");a.href=URL.createObjectURL(new Blob([JSON.stringify(songs)],{type:"application/json"}));a.download="my-songs-backup.json";a.click()}
+$("imp").onchange=async e=>{try{const d=JSON.parse(await e.target.files[0].text());d.forEach(x=>{if(!songs.some(s=>s.id==x.id)){x.mp3=false;songs.push(x)}});persist();render()}catch(err){alert("Invalid file")}};
+idb().then(render);
+</script></body></html>
